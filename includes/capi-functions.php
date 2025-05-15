@@ -111,8 +111,13 @@ function simple_fb_build_capi_payload( $eventName, $debug = false, $additionalDa
     // Sanitize any incoming additionalData
     $additional = simple_fb_sanitize_capi_data( $additionalData );
 
-    // Generate a clean event_id
-    $event_id = $event_name . '_' . uniqid();
+    // Use incoming event_id if available, otherwise generate a unique one
+    if ( isset( $additional['event_id'] ) ) {
+        $event_id = sanitize_text_field( $additional['event_id'] );
+        unset( $additional['event_id'] );
+    } else {
+        $event_id = $event_name . '_' . uniqid();
+    }
 
     // Assemble core event
     $event = [

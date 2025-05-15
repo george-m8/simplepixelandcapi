@@ -1,18 +1,38 @@
 function sendHubspotLeadEvent() {
-  // 1) Trigger the client-side Pixel 'Lead' event
+  // Build a dedupe ID
+  const eventId = 'fb_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
+
+  // Trigger the client-side Pixel 'Lead' with eventID
   if (typeof fbq === 'function') {
-    fbq('track', 'Lead');
+    fbq(
+      'track',
+      'Lead',
+      {},                    // custom_data (empty here)
+      { eventID: eventId }
+    );
   }
 
-  // 2) Fire an AJAX request to WordPress to do a server-side CAPI 'Lead' event
-  fetch(simplePixelData.ajaxUrl + '?action=send_lead_capi_event', {
-    method: 'POST'
-  })
-    .then(res => res.json())
-    .then(data => {
-      console.log('Lead CAPI response:', data);
+  // Fire WP-AJAX with the same event_id
+  fetch(simplePixelData.ajaxUrl, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action:   'send_lead_capi_event',
+      event_id: eventId
     })
-    .catch(err => console.error('CAPI Lead event error:', err));
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (simplePixelData.debug) {
+      console.log('Lead CAPI response:', data);
+    }
+  })
+  .catch(err => {
+    if (simplePixelData.debug) {
+      console.error('CAPI Lead event error:', err);
+    }
+  });
 }
 
 // Expose the function globally so external code (like HubSpot forms) can call it
