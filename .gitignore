@@ -1,0 +1,17 @@
+# Ignore macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Ignore macOS folder attributes
+Icon?
+._*
+
+# Ignore macOS specific files
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+com.apple.timemachine.donotpresent
+
+# Ignore config.json
+config.json
