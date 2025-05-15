@@ -2,7 +2,7 @@
 /*
 Plugin Name: Simple FB Pixel and CAPI
 Description: A simple plugin to add the Facebook Pixel code and Meta CAPI to your WordPress site.
-Version: 3.4
+Version: 3.5
 Author: George M
 */
 
@@ -124,7 +124,7 @@ function simple_fb_pixel_send_pageview_event() {
     }
 
     // Build & send the payload
-    $payload = simple_fb_build_capi_payload( 'pageView', SIMPLE_PIXEL_DEBUG, [
+    $payload = simple_fb_build_capi_payload( 'PageView', SIMPLE_PIXEL_DEBUG, [
         'event_source_url' => esc_url( $event_url ),
     ]);
 
