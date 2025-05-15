@@ -31,13 +31,13 @@ function simple_fb_get_config($key) {
  * @param mixed $data
  * @return mixed
  */
-function myplugin_sanitize_capi_data( $data ) {
+function simple_fb_sanitize_capi_data( $data ) {
     if ( is_array( $data ) ) {
         $out = [];
         foreach ( $data as $key => $value ) {
             // sanitize key too
             $key = sanitize_text_field( (string) $key );
-            $out[ $key ] = myplugin_sanitize_capi_data( $value );
+            $out[ $key ] = simple_fb_sanitize_capi_data( $value );
         }
         return $out;
     }
@@ -63,11 +63,12 @@ function myplugin_sanitize_capi_data( $data ) {
  * @param array  $additionalData any extra keys (custom_data, event_source_url, etc)
  * @return array
  */
+
 function simple_fb_build_capi_payload( $eventName, $debug = false, $additionalData = [] ) {
-    // 1) Clean up the event name
+    // Clean up the event name
     $event_name = preg_replace( '/[^A-Za-z0-9_]/', '_', sanitize_text_field( $eventName ) );
 
-    // 2) Pull & sanitize cookies
+    // Pull & sanitize cookies
     $fbp = isset( $_COOKIE['_fbp'] )
         ? sanitize_text_field( wp_unslash( $_COOKIE['_fbp'] ) )
         : null;
@@ -75,29 +76,45 @@ function simple_fb_build_capi_payload( $eventName, $debug = false, $additionalDa
         ? sanitize_text_field( wp_unslash( $_COOKIE['_fbc'] ) )
         : null;
 
-    // 3) Sanitize server values
+    // Sanitize server values
     $ua = ! empty( $_SERVER['HTTP_USER_AGENT'] )
         ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) )
         : null;
-    $ip = ! empty( $_SERVER['REMOTE_ADDR'] ) && filter_var( $_SERVER['REMOTE_ADDR'], FILTER_VALIDATE_IP )
-        ? $_SERVER['REMOTE_ADDR']
-        : null;
 
-    // 4) Build user_data, only non-empty
+    // Grab the true client IP (v4 or v6) that Cloudflare passes along
+    $client_ip = null;
+
+    // Try Cloudflare’s header first
+    if ( ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) {
+        $cf_ip = sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) );
+        if ( filter_var( $cf_ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6 ) ) {
+            $client_ip = $cf_ip;
+        }
+    }
+    
+    // Fallback to REMOTE_ADDR
+    if ( is_null( $client_ip ) && ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
+        $remote = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) );
+        if ( filter_var( $remote, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_IPV6 ) ) {
+            $client_ip = $remote;
+        }
+    }
+
+    // Build user_data, only non-empty
     $user_data = array_filter( [
         'fbp'                => $fbp,
         'fbc'                => $fbc,
         'client_user_agent'  => $ua,
-        'client_ip_address'  => $ip,
+        'client_ip_address'  => $client_ip,
     ], function( $v ) { return ! is_null( $v ) && $v !== ''; } );
 
-    // 5) Sanitize any incoming additionalData
-    $additional = myplugin_sanitize_capi_data( $additionalData );
+    // Sanitize any incoming additionalData
+    $additional = simple_fb_sanitize_capi_data( $additionalData );
 
-    // 6) Generate a clean event_id
+    // Generate a clean event_id
     $event_id = $event_name . '_' . uniqid();
 
-    // 7) Assemble core event
+    // Assemble core event
     $event = [
         'event_name'    => $event_name,
         'event_time'    => time(),
@@ -106,7 +123,7 @@ function simple_fb_build_capi_payload( $eventName, $debug = false, $additionalDa
         'user_data'     => $user_data,
     ];
 
-    // 8) Merge in any extra fields (custom_data, event_source_url, etc)
+    // Merge in any extra fields (custom_data, event_source_url, etc)
     if ( ! empty( $additional ) && is_array( $additional ) ) {
         $event = array_merge( $event, $additional );
     }
