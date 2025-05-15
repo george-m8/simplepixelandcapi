@@ -159,7 +159,7 @@ function simple_fb_send_capi_event($payload, $debug = false) {
     }
 
     // Endpoint
-    $url = "https://graph.facebook.com/v12.0/{$pixel_id}/events?access_token={$accessToken}";
+    $url = "https://graph.facebook.com/v17.0/{$pixel_id}/events?access_token={$accessToken}";
 
     // Make the request
     $response = wp_remote_post($url, [
