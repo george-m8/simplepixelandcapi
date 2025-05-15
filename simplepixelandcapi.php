@@ -2,7 +2,7 @@
 /*
 Plugin Name: Simple FB Pixel and CAPI
 Description: A simple plugin to add the Facebook Pixel code and Meta CAPI to your WordPress site.
-Version: 3.5
+Version: 3.6
 Author: George M
 */
 
@@ -153,7 +153,7 @@ function simple_fb_pixel_enqueue_scripts() {
         plugin_dir_url(__FILE__) . 'js/hubspotTracking.js',
         [],
         '1.0',
-        false
+        true
     );
     wp_localize_script(
         'simple-pixel-hubspot-tracking',
@@ -191,12 +191,20 @@ function simple_fb_pixel_lead_capi_event() {
         error_log('Received AJAX request to send Lead event.');
     }
 
+    // Grab the JS-generated event_id (or fall back)
+    $event_id = isset($_POST['event_id'])
+        ? sanitize_text_field( wp_unslash( $_POST['event_id'] ) )
+        : uniqid('fb_', true);
+
     // Determine the current page URL
     $event_url = home_url( add_query_arg( null, null ) );
 
-    $payload = simple_fb_build_capi_payload('Lead', SIMPLE_PIXEL_DEBUG, [
-        'event_source_url' => esc_url($event_url),
-    ]);
+    // Pass it into build_capi_payload’s additionalData
+        $payload = simple_fb_build_capi_payload('Lead', SIMPLE_PIXEL_DEBUG, [
+            'event_id'         => $event_id,
+            'event_source_url' => esc_url($event_url),
+        ]);
+    
 
     if (SIMPLE_PIXEL_DEBUG) {
         error_log('Lead payload: ' . print_r($payload, true));

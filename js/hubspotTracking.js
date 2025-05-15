@@ -7,17 +7,18 @@ function sendHubspotLeadEvent() {
     fbq(
       'track',
       'Lead',
-      {},                    // custom_data (empty here)
+      {}, // custom_data (empty here)
       { eventID: eventId }
     );
   }
 
   // Fire WP-AJAX with the same event_id
+
   fetch(simplePixelData.ajaxUrl, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
       action:   'send_lead_capi_event',
       event_id: eventId
     })
