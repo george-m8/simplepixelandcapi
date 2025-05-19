@@ -2,7 +2,7 @@
 /*
 Plugin Name: Simple FB Pixel and CAPI
 Description: A simple plugin to add the Facebook Pixel code and Meta CAPI to your WordPress site.
-Version: 3.6
+Version: 3.7
 Author: George M
 */
 
@@ -14,39 +14,55 @@ define('SIMPLE_PIXEL_DEBUG', true);
 // Require our CAPI functions (payload building & sending)
 require_once plugin_dir_path(__FILE__) . 'includes/capi-functions.php';
 
-// Hook to insert the pixel code in the header
-add_action('wp_head', 'simple_fb_pixel_inject_code');
+// On page‐load, make one event_id and share it via a global
+add_action('template_redirect','simple_fb_generate_pageview_event_id', 1);
+function simple_fb_generate_pageview_event_id() {
+    if ( is_admin() || wp_doing_ajax() || wp_doing_cron() || (defined('REST_REQUEST')&&REST_REQUEST) ) {
+        return;
+    }
+    global $simple_fb_pageview_event_id;
+    $simple_fb_pageview_event_id = 'PageView_' . uniqid();
+}
+
+// In your wp_head injection, pull that same ID and use it in fbq()
+add_action('wp_head','simple_fb_pixel_inject_code');
 function simple_fb_pixel_inject_code() {
+    global $simple_fb_pageview_event_id;
     $pixel_id = simple_fb_get_config('pixel_id');
+    
     if (SIMPLE_PIXEL_DEBUG) {
         error_log('Attempting to inject FB Pixel. Pixel ID: ' . ($pixel_id ?: 'Not Found'));
     }
-    if (!$pixel_id) {
+
+    if ( !$pixel_id || empty($simple_fb_pageview_event_id) ) {
         if (SIMPLE_PIXEL_DEBUG) {
-            error_log('FB Pixel not injected: no pixel ID found.');
+            error_log('FB Pixel not injected: no pixel ID or event ID found.');
         }
         return;
     }
     ?>
-    <!-- Facebook Meta Pixel Code -->
+    <!-- Facebook Meta Pixel Code w/ shared eventID -->
     <script>
-      !function(f,b,e,v,n,t,s)
-      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-      n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t,s)}(window, document,'script',
-      'https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', '<?php echo esc_js($pixel_id); ?>'); 
-      fbq('track', 'PageView');
+      !function(f,b,e,v,n,t,s){/* usual init */}(window,document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init','<?php echo esc_js($pixel_id); ?>');
+      fbq(
+        'track',
+        'PageView',
+        {},  // no custom_data
+        { eventID: '<?php echo esc_js($simple_fb_pageview_event_id); ?>' }
+      );
     </script>
     <noscript>
-      <img height='1' width='1' style='display:none'
-      src='https://www.facebook.com/tr?id=<?php echo esc_attr($pixel_id); ?>&ev=PageView&noscript=1'/>
+      <img height="1" width="1" style="display:none"
+           src="https://www.facebook.com/tr?
+            id=<?php echo esc_attr($pixel_id); ?>&ev=PageView&noscript=1"/>
     </noscript>
     <!-- End Facebook Meta Pixel Code -->
     <?php
+    if (SIMPLE_PIXEL_DEBUG) {
+        error_log('FB Pixel injected with event ID: ' . ($simple_fb_pageview_event_id ?: 'Not Found'));
+    }
 }
 
 /**
@@ -89,6 +105,8 @@ function simple_fb_pixel_ensure_fbc_cookie() {
 // Hook page view CAPI on template_redirect
 add_action('template_redirect', 'simple_fb_pixel_send_pageview_event');
 function simple_fb_pixel_send_pageview_event() {
+    global $simple_fb_pageview_event_id;
+
     // Bail on admin, Ajax, REST, cron, feeds, previews…
     if (
         is_admin() ||
@@ -101,42 +119,46 @@ function simple_fb_pixel_send_pageview_event() {
         return;
     }
 
-    // (Optional) Only singular posts/pages or home/front page
+    // Only singular posts/pages or home/front page
     if ( ! ( is_singular() || is_front_page() || is_home() ) ) {
         return;
     }
 
-    // …now safe to build & send…
-    if (SIMPLE_PIXEL_DEBUG) {
-        error_log('Preparing to send PageView event via CAPI.');
+    // If for some reason the event_id wasn't generated, bail
+    if ( empty( $simple_fb_pageview_event_id ) ) {
+        if ( SIMPLE_PIXEL_DEBUG ) {
+            error_log( 'No PageView event_id found; skipping CAPI send.' );
+        }
+        return;
+    }
+
+    if ( SIMPLE_PIXEL_DEBUG ) {
+        error_log( 'Preparing to send PageView event via CAPI. event_id: ' . $simple_fb_pageview_event_id );
     }
 
     // Decide on the canonical URL
     if ( is_singular() ) {
-        // Single post/page: get its permalink
         $event_url = get_permalink();
     } elseif ( is_front_page() || is_home() ) {
-        // Blog index or static front page
         $event_url = home_url();
     } else {
-        // (optional) any other archive type
         $event_url = home_url( add_query_arg( null, null ) );
     }
 
-    // Build & send the payload
+    // Build & send the payload, passing our shared event_id
     $payload = simple_fb_build_capi_payload( 'PageView', SIMPLE_PIXEL_DEBUG, [
+        'event_id'         => $simple_fb_pageview_event_id,
         'event_source_url' => esc_url( $event_url ),
-    ]);
+    ] );
 
-    if (SIMPLE_PIXEL_DEBUG) {
-        error_log('PageView payload: ' . print_r($payload, true));
+    if ( SIMPLE_PIXEL_DEBUG ) {
+        error_log( 'PageView payload: ' . print_r( $payload, true ) );
     }
 
-    // Send it
-    $response = simple_fb_send_capi_event($payload, SIMPLE_PIXEL_DEBUG);
+    $response = simple_fb_send_capi_event( $payload, SIMPLE_PIXEL_DEBUG );
 
-    if (SIMPLE_PIXEL_DEBUG) {
-        error_log('PageView event response: ' . print_r($response, true));
+    if ( SIMPLE_PIXEL_DEBUG ) {
+        error_log( 'PageView event response: ' . print_r( $response, true ) );
     }
 }
 
